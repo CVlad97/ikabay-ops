@@ -1,0 +1,127 @@
+{
+  "name": "Repo Audit -> Google Sheets (CVlad97)",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyDay",
+              "hour": 2,
+              "minute": 5
+            }
+          ]
+        }
+      },
+      "id": "cron_1",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        220,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{'https://api.github.com/users/' + $vars.GITHUB_OWNER + '/repos?per_page=100&type=owner&sort=updated'}}",
+        "responseFormat": "json",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $vars.GITHUB_PAT}}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http_list",
+      "name": "GitHub - List Repos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        470,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Convert GitHub REST array -> items\nconst arr = Array.isArray($json) ? $json : ($json.body ?? $json);\nif (!Array.isArray(arr)) throw new Error('Unexpected GitHub response shape');\nreturn arr.filter(r => !r.fork).map(r => ({ json: {\n  repo: r.name,\n  visibility: r.private ? 'private' : 'public',\n  url: r.html_url,\n  homepage_url: r.homepage || '',\n  default_branch: r.default_branch || '',\n  status: 'ok',\n  notes: 'Automated repo inventory (secrets handled separately)'\n}}));"
+      },
+      "id": "fn_split",
+      "name": "Split Array",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        710,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "appendOrUpdate",
+        "documentId": "={{$vars.SHEET_ID}}",
+        "sheetName": "={{$vars.SHEET_NAME || 'audit'}}",
+        "keyColumn": "repo",
+        "options": {}
+      },
+      "id": "sheets_upsert",
+      "name": "Google Sheets - Upsert",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        970,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "GitHub - List Repos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - List Repos": {
+      "main": [
+        [
+          {
+            "node": "Split Array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Array": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

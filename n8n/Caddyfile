@@ -1,0 +1,10 @@
+{
+  email {$ACME_EMAIL}
+}
+
+{$N8N_HOST} {
+  encode gzip
+
+  reverse_proxy 127.0.0.1:5678
+}
+

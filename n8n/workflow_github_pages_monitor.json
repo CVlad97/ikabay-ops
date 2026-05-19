@@ -1,0 +1,184 @@
+{
+  "name": "Pages Monitor (CVlad97)",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyHour"
+            }
+          ]
+        }
+      },
+      "id": "cron_1",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://api.github.com/users/' + $vars.GITHUB_OWNER + '/repos?per_page=100&type=owner&sort=updated'}}",
+        "responseFormat": "json",
+        "options": {}
+      },
+      "id": "http_list_repos",
+      "name": "GitHub - List Repos (REST)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "__REPLACE__",
+          "name": "GitHub PAT Header"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "= {{$json}}",
+        "options": {}
+      },
+      "id": "split_repos",
+      "name": "Split Repos",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$json[0].url + '/pages'}}",
+        "responseFormat": "json",
+        "options": {
+          "ignoreHttpStatusErrors": true
+        }
+      },
+      "id": "http_pages",
+      "name": "GitHub - Repo Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        940,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "__REPLACE__",
+          "name": "GitHub PAT Header"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "= {{$json.status || ''}}",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{$json.status || ''}}",
+              "rightValue": "built",
+              "operator": "notEqual"
+            }
+          ]
+        }
+      },
+      "id": "if_not_built",
+      "name": "If Pages Not Built",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "message": "={{'Pages status not built for ' + $json.url + ' status=' + ($json.status || 'unknown')}}",
+        "additionalFields": {}
+      },
+      "id": "notify",
+      "name": "Notify (Log)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1420,
+        260
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "GitHub - List Repos (REST)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - List Repos (REST)": {
+      "main": [
+        [
+          {
+            "node": "Split Repos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Repos": {
+      "main": [
+        [
+          {
+            "node": "GitHub - Repo Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - Repo Pages": {
+      "main": [
+        [
+          {
+            "node": "If Pages Not Built",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Pages Not Built": {
+      "main": [
+        [
+          {
+            "node": "Notify (Log)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

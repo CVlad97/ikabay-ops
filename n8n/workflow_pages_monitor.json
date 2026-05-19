@@ -1,0 +1,226 @@
+{
+  "name": "Pages Monitor -> Sheet (CVlad97)",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyHour"
+            }
+          ]
+        }
+      },
+      "id": "cron_1",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        220,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{'https://api.github.com/users/' + $vars.GITHUB_OWNER + '/repos?per_page=100&type=owner&sort=updated'}}",
+        "responseFormat": "json",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $vars.GITHUB_PAT}}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http_list",
+      "name": "GitHub - List Repos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        470,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Convert response array -> items\nconst arr = Array.isArray($json) ? $json : ($json.body ?? $json);\nif (!Array.isArray(arr)) throw new Error('Unexpected GitHub response shape');\nreturn arr.filter(r => !r.fork).map(r => ({ json: {\n  name: r.name,\n  api_url: r.url,\n  html_url: r.html_url\n}}));"
+      },
+      "id": "fn_split",
+      "name": "Split Array",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        710,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$json.api_url + '/pages'}}",
+        "responseFormat": "json",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $vars.GITHUB_PAT}}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "ignoreHttpStatusErrors": true
+        }
+      },
+      "id": "http_pages",
+      "name": "GitHub - Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        960,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Normalize result. If 404, repo has no Pages enabled.\nconst statusCode = $json.statusCode ?? $json.status ?? null;\n// Some n8n versions put the HTTP response under json.body when ignoreHttpStatusErrors=true\nconst body = $json.body ?? $json;\nconst repoName = $item(0).$node['Split Array'].json.name;\nconst htmlUrl = $item(0).$node['Split Array'].json.html_url;\nif (statusCode === 404 || body.message === 'Not Found') {\n  return [{ json: { repo: repoName, pages_enabled: false, pages_status: 'not_configured', pages_url: '', repo_url: htmlUrl, checked_at: new Date().toISOString(), alert: false } }];\n}\nconst pagesUrl = body.html_url || body.url || '';\nconst pagesStatus = body.status || 'unknown';\nconst alert = pagesStatus !== 'built';\nreturn [{ json: { repo: repoName, pages_enabled: true, pages_status: pagesStatus, pages_url: pagesUrl, repo_url: htmlUrl, checked_at: new Date().toISOString(), alert } }];"
+      },
+      "id": "fn_norm",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{$json.alert}}",
+              "rightValue": true,
+              "operator": "equal"
+            }
+          ]
+        }
+      },
+      "id": "if_alert",
+      "name": "If Alert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "append",
+        "documentId": "={{$vars.SHEET_ID}}",
+        "sheetName": "={{$vars.SHEET_PAGES_TAB || 'pages_monitor'}}",
+        "options": {}
+      },
+      "id": "sheets_append",
+      "name": "Google Sheets - Append Alert",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1680,
+        280
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "GitHub - List Repos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - List Repos": {
+      "main": [
+        [
+          {
+            "node": "Split Array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Array": {
+      "main": [
+        [
+          {
+            "node": "GitHub - Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - Pages": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "If Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Alert": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Append Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
